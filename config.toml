@@ -1,0 +1,4 @@
+baseURL = 'https://kipplesunderscore.github.io/'
+languageCode = 'en-us'
+title = 'kipplesunderscore'
+theme = "ananke"

@@ -1,0 +1,344 @@
+#+title: Push Swap but mostly Push Rotate
+Push Swap is a 42 School Project where you must sort a list of numbers using 2 stacks and a limited set of operations.
+
+You are given 2 stacks A and B the full list of unsorted numbers will be inserted into A, then by only using the allowed operations you must sort the list into ascending order in stack A. Your algorithm needs to return the list of operations to perform to sort the list.
+
+There are 4 types of operations that can be performed:
+ 1. Push
+    - *pa* pop from stack B and push onto stack A
+    - *pb* pop from stack A and push onto stack B
+ 2. Swap
+    - *sa* swap first 2 elements on stack A
+    - *sb* swap first 2 elements on stack B
+    - *ss* both *sa* and *sb* at the same time
+ 3. Rotate
+    - *ra* pop from stack A and insert at the end of stack A
+    - *rb* pop from stack B and insert at the end of stack B
+    - *rr* both *ra* and *rb* at the same time
+ 4. Reverse Rotate
+    - *rra* pop from end stack A and push onto stack A
+    - *rrb* pop from end stack B and push onto stack B
+    - *rrr* both *rra* and *rrb* at the same time
+
+Here is an example of what the input / output shoud look like:
+#+BEGIN_SRC
+$> ./push_swap 5 4 2 1 3
+pb
+rb
+pb
+sa
+pa
+ra
+pa
+ra
+#+END_SRC
+
+* Evaluation Criteria
+Your algorithm should be able to sort any list of non-duplicate valid 32-bit signed integers and do so efficently. There are requirements for number of operations for various input size *N*. For this article I will mostly be focused on *N* = 500 (The largest tested input size) which has a < 5500 operation requirment for full marks.
+
+* Solution
+I have implemented a solution to the problem below in Python we will take a look at some of the choices that can be made for parts of the algorithm and how it affects the operation count.
+** Algorithm Overview
+The algorithm can be broken up into 4 stages:
+1. Normalisation
+   Transform the numbers so that they are in the range 1..*N* (inclusive) while not strictly necessary, does help with debugging and some calculations like finding the smallest value.
+2. AtoB
+   Perform *pb* operations until most of the numbers are in stack B.
+   At the end of this stack A should be in order.
+3. BtoA
+   perform *pa* operations until all the numbers are back in stack A.
+   Note we can only perform the *pa* operation if stack A will remain in order.
+   This will require us to rotate both stacks to the right state that we are allowed to perform a *pa* operation.
+4. Aligning A
+   find and move the smallest number to the top of the stack using rotate operations.
+** Game logic
+Here we have some functions to manage the state of the 2 stacks and record the list of operations. There are also some functions to help generate histogram plots that are used in this article.
+#+BEGIN_SRC python :session push-swap :results none
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+import random
+from collections import deque
+from bisect import bisect
+
+def SA(A, B, OPS):
+    A[0],A[1] = A[1],A[0]
+    OPS.append('sa')
+
+def PA(A, B, OPS):
+    A.appendleft(B.popleft())
+    OPS.append('pa')
+
+def PB(A, B, OPS):
+    B.appendleft(A.popleft())
+    OPS.append('pb')
+
+def RA(A, B, OPS):
+    A.rotate(-1)
+    OPS.append('ra')
+
+def RB(A, B, OPS):
+    B.rotate(-1)
+    OPS.append('rb')
+
+def RR(A, B, OPS):
+    A.rotate(-1)
+    B.rotate(-1)
+    OPS.append('rr')
+
+def RRA(A, B, OPS):
+    A.rotate(1)
+    OPS.append('rra')
+
+def RRB(A, B, OPS):
+    B.rotate(1)
+    OPS.append('rrb')
+
+def RRR(A, B, OPS):
+    A.rotate(1)
+    B.rotate(1)
+    OPS.append('rrr')
+
+def random_list(N):
+    lis = list(range(1, N+1))
+    random.shuffle(lis)
+    return lis
+
+fig=plt.figure()
+plt.rcParams["hist.bins"] = 20
+
+def plot_algo(algo):
+    fig.clear(True)
+    plt.hist(push_swap(100))
+    fig.tight_layout()
+    fname = f'{algo}.png'
+    plt.savefig(fname)
+    return fname
+
+def push_swap(simulations):
+    data = []
+    for i in range(simulations):
+        OPS = []
+        A = deque(random_list(500))
+        B = deque()
+        atob(A, B, OPS)
+        btoa(A, B, OPS)
+        align_a(A, B, OPS)
+        data.append(len(OPS))
+    return data
+#+END_SRC
+
+** BtoA
+This stage involves finding the element in stack B that represents the cheapest set of rotate operations, such that we can perform a *pa* operation.
+*** Find target index in stack A
+We need to find at what index the element in stack B should be inserted into stack A to keep stack A in order. This index value represens the number of stack A rotations that need to be performed to put that index at the top of the stack so we can push the element into position.
+#+BEGIN_SRC python :session push-swap :results none
+# function to find the index at which `e`
+# should be inserted in order to keep
+# A in order.
+def target_index(A, e):
+    # move the smallest number to the top of the stack
+    # note this does not update our outputted instructions
+    i = A.index(min(A))
+    A.rotate(-i)
+    # bisect is a python built-in that finds the required index
+    # as long as the given list is sorted
+    target = (bisect(A, e) + i) % len(A)
+    # undo the rotation from earlier
+    A.rotate(i)
+    # determine if it would be better to rotate vs reverse rotate
+    target = target if target <= (len(A) // 2) else -(len(A) - target)
+    return target
+#+END_SRC
+
+*** Find cheapest
+Here we use our target_index function to find the element in stack B that has the cheapest cost. for each element we need to calculate the cost of rotating the element to the top of stack B and the cost to rotate stack A into position.
+We also need to keep in mind when we can perform the double rotate operations (*rr* and *rrr*) as they will affect the costs.
+#+BEGIN_SRC python :session push-swap :results none
+def op_cost(a, b):
+    if a * b > 0:
+        # we can rotate both stacks a the same time
+        return max(abs(a), abs(b))
+    else:
+        # stacks want to rotate different directions
+        return abs(a) + abs(b)
+
+def find_cheapest(A, B):
+    # set cheap to most expensive operation
+    cheap = (-len(A), len(B))
+    for i in range(len(B)):
+        # if this is true the cost to rotate just B is more expensive
+        # than our cheapest so we are done
+        if op_cost(i, 0) >= op_cost(*cheap):
+            break
+        # check cost if we rotate
+        tmp = (target_index(A, B[i]), i)
+        if op_cost(*tmp) < op_cost(*cheap):
+            cheap = tmp
+        # check cost  if we reverse rotate
+        tmp = (target_index(A, B[-i]), -i)
+        if op_cost(*tmp) < op_cost(*cheap):
+            cheap = tmp
+    return cheap
+#+END_SRC
+
+*** Performing the operations
+Now that we can calculate the cheapest cost to insert an element from B into A. we need to execute a series of rotate operations before finally doing a *pa* operation.
+#+BEGIN_SRC python :session push-swap :results none
+def btoa(A, B, OPS):
+    while (len(B) > 0):
+        # get the cheapest cost to insert an elment into stack A
+        # positive costs are rotates while negative are reverse rotates
+        cost_a, cost_b = find_cheapest(A, B)
+        if cost_a * cost_b > 0:
+            # stacks want to be rotated in the same direction
+            # tmp contains the number of rotations to be perfored
+            tmp = min(cost_a, cost_b) if cost_a > 0 else max(cost_a, cost_b)
+            # do the rotations on both stacks
+            for _ in range(abs(tmp)):
+                if cost_a > 0:
+                    RR(A, B, OPS)
+                else:
+                    RRR(A, B, OPS)
+            # make sure to adjust costs in case of leftover rotations
+            # one of these costs should be zero at this point
+            cost_a -= tmp
+            cost_b -= tmp
+        # rotate stack A
+        for _ in range(abs(cost_a)):
+            if cost_a > 0:
+                RA(A, B, OPS)
+            else:
+                RRA(A, B, OPS)
+        # rotate stack B
+        for _ in range(abs(cost_b)):
+            if cost_b > 0:
+                RB(A, B, OPS)
+            else:
+                RRB(A, B, OPS)
+        # push number B to A
+        PA(A, B, OPS)
+#+END_SRC
+
+** Aligning A
+This is a straightforward calculation we find the index of the smallest value in stack A and then perform rotate operations to bring it to the top of the stack.
+#+BEGIN_SRC python :session push-swap :results none
+def align_a(A, B, OPS):
+    # find index of smallest value in list
+    small = A.index(1)
+    # determine if we rotate or reverse rotate
+    small = small if small <= len(A) // 2 else -(len(A) - small)
+    # rotate smallest value to top of stack
+    for _ in range(abs(small)):
+        RA(A, B, OPS) if small > 0 else RRA(A, B, OPS)
+#+END_SRC
+** AtoB
+*** Need sa?
+When there are 3 elements in stack A we can at worst perform 1 *sa* operation to put the elements in order.
+#+BEGIN_SRC python :session push-swap :results none
+def need_sa(A, B):
+    if len(A) < 3:
+        return False
+    max_val = max(A)
+    min_val = min(A)
+    # essentially just checks to see if the number after the max value
+    # is not the min value if it is not then we need to swap A
+    return ((A[0] == max_val and A[1] != min_val) or \
+            (A[2] == max_val and A[0] != min_val) or \
+            (A[1] == max_val and A[2] != min_val))
+#+END_SRC
+*** AtoB Algorithm Options
+At this point the above algorithm for BtoA are set and the last decisions we need to make are how we push elements from AtoB. This is where I found a lot of the variance in the number of operations.
+**** Keep 3
+Seeing as how we have the need_sa function the firs thing we should try is just blindly pushing all but 3 elements into stack B. then if we need to perform a *sa*
+#+BEGIN_SRC python :session push-swap :results file :var algo="keep3"
+def atob(A, B, OPS):
+    # push all but 3 values from A to B
+    while len(A) > 3:
+        PB(A, B, OPS)
+    # check to see if we need to swap A to put the 3 values in order
+    if need_sa(A, B):
+        SA(A, B, OPS)
+
+plot_algo("keep3")
+#+END_SRC
+
+As we can see from the results this does a pretty good job and goes to show the power of the BtoA algorithm. however there are some outliers above the 5500 limit. Which while will still give us a pass for this project there is one minor change we can make to this algorithm to get us full marks.
+
+#+RESULTS:
+[[file:keep3.png]]
+
+**** Keep 3 Rotate Under
+This algorithm is mostly the same as above, the only difference is that after we push an element onto stack B. We determine if this element is in the larger half (i.e. e > 250 for N = 500) if it is we do a *rb* operation. This will move all the large numbers to the bottom of stack B. A the end of the AtoB operation, stack B will have all the small numbers at the top and then all the large numbers.
+#+BEGIN_SRC python :session push-swap :results file :var algo="keep3_rotate"
+def atob(A, B, OPS):
+    n = len(A)
+    while len(A) > 3:
+        PB(A, B, OPS)
+        # if the value just pushed is a large number move it to
+        # the bottom of stack B with a `rb`
+        if B[0] > n // 2:
+            RB(A, B, OPS)
+    if need_sa(A, B):
+        SA(A, B, OPS)
+
+plot_algo("keep3_rotate")
+#+END_SRC
+
+#+RESULTS:
+[[file:keep3_rotate.png]]
+
+As we can see from the histogram we are easily under 5000 operations now and have acquired full marks for this project.
+
+
+#+RESULTS:
+[[file:keep3_rotate.png]]
+
+**** Can we do better
+Below is my final submission, it involves splitting the values into more chunks, the previous algorithm split the numbers into 2 chunks this one splits into 6 which saves more operations. The reason why this chunk splitting is so effective is that by keeping numbers of similar ranges together you lower the average costs for the BtoA algorithm.
+
+#+BEGIN_SRC python :session push-swap :results file :var algo="final"
+CHUNKS = [0.5, 0.7, 0.85]
+
+def atob_push(A, B, OPS, lo, hi):
+    n = len(A)
+    large_threshold = lo + ((hi - lo) // 2)
+    need_rb = False
+    while len(A) > n - (hi - lo):
+        if lo < A[0] <= hi:
+            if need_rb:
+                RB(A, B, OPS)
+                need_rb = False
+            PB(A, B, OPS)
+            if B[0] > large_threshold:
+                need_rb = True
+        else:
+            RR(A,B, OPS) if need_rb else RA(A, B, OPS)
+            need_rb = False
+
+def atob(A, B, OPS):
+    n = len(A)
+    prev_hi = 0
+    if n > 20:
+        for i in CHUNKS:
+            hi = int(n * i)
+            lo = prev_hi
+            atob_push(A, B, OPS, lo, hi)
+            prev_hi = hi
+    large_threshold = prev_hi + ((n - prev_hi) // 2)
+    need_rb = False
+    while len(A) > 3:
+        if need_rb:
+            RB(A, B, OPS)
+            need_rb = False
+        PB(A, B, OPS)
+        if B[0] > large_threshold:
+            need_rb = True
+    if need_sa(A, B):
+        SA(A, B, OPS)
+
+plot_algo("final")
+#+END_SRC
+
+#+RESULTS:
+[[file:final.png]]
