@@ -285,11 +285,7 @@ def atob(A, B, OPS):
 plot_algo("keep3_rotate")
 #+END_SRC
 
-#+RESULTS:
-[[file:keep3_rotate.png]]
-
 As we can see from the histogram we are easily under 5000 operations now and have acquired full marks for this project.
-
 
 #+RESULTS:
 [[file:keep3_rotate.png]]
