@@ -250,7 +250,7 @@ def need_sa(A, B):
 *** AtoB Algorithm Options
 At this point the above algorithm for BtoA are set and the last decisions we need to make are how we push elements from AtoB. This is where I found a lot of the variance in the number of operations.
 **** Keep 3
-Seeing as how we have the need_sa function the firs thing we should try is just blindly pushing all but 3 elements into stack B. then if we need to perform a *sa*
+Seeing as how we have the need_sa function the first thing we should try is just blindly pushing all but 3 elements into stack B. then if we need to perform a *sa*
 #+BEGIN_SRC python :session push-swap :results file :var algo="keep3"
 def atob(A, B, OPS):
     # push all but 3 values from A to B
