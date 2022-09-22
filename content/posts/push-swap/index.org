@@ -1,9 +1,9 @@
-#+title: Push Swap but mostly Push Rotate
+#+title: Push Swap but actually Push Rotate
 Push Swap is a 42 School Project where you must sort a list of numbers using 2 stacks and a limited set of operations.
 
-You are given 2 stacks A and B the full list of unsorted numbers will be inserted into A, then by only using the allowed operations you must sort the list into ascending order in stack A. Your algorithm needs to return the list of operations to perform to sort the list.
+You use 2 stacks A and B. The full list of unsorted numbers will input into A, then using the allowed operations you must sort the list into ascending order in stack A. Your algorithm needs to return the list of operations to perform to sort the list.
 
-There are 4 types of operations that can be performed:
+There are 4 types of operations that we can use:
  1. Push
     - *pa* pop from stack B and push onto stack A
     - *pb* pop from stack A and push onto stack B
@@ -20,7 +20,7 @@ There are 4 types of operations that can be performed:
     - *rrb* pop from end stack B and push onto stack B
     - *rrr* both *rra* and *rrb* at the same time
 
-Here is an example of what the input / output shoud look like:
+Here is an example of what the input / output should look like:
 #+BEGIN_SRC
 $> ./push_swap 5 4 2 1 3
 pb
@@ -34,25 +34,25 @@ ra
 #+END_SRC
 
 * Evaluation Criteria
-Your algorithm should be able to sort any list of non-duplicate valid 32-bit signed integers and do so efficently. There are requirements for number of operations for various input size *N*. For this article I will mostly be focused on *N* = 500 (The largest tested input size) which has a < 5500 operation requirment for full marks.
+Your algorithm should be able to sort any list of non-duplicate, valid 32-bit signed integers and do so efficiently. There are requirements for number of operations for differing input size *N*. For this article I will focus on *N* = 500 (The largest tested input size) which has a requirement of less than 5500 operations for full score.
 
 * Solution
 I have implemented a solution to the problem below in Python we will take a look at some of the choices that can be made for parts of the algorithm and how it affects the operation count.
 ** Algorithm Overview
-The algorithm can be broken up into 4 stages:
+The algorithm gets divided into 4 stages:
 1. Normalisation
-   Transform the numbers so that they are in the range 1..*N* (inclusive) while not strictly necessary, does help with debugging and some calculations like finding the smallest value.
+   Transform the numbers so that they are in the range 1 .. *N* (inclusive) while not strictly necessary, does help with debugging and some calculations like finding the smallest value.
 2. AtoB
    Perform *pb* operations until most of the numbers are in stack B.
    At the end of this stack A should be in order.
 3. BtoA
    perform *pa* operations until all the numbers are back in stack A.
    Note we can only perform the *pa* operation if stack A will remain in order.
-   This will require us to rotate both stacks to the right state that we are allowed to perform a *pa* operation.
+   This requires us to perform rotate operations on both stacks until we can *pa*
 4. Aligning A
    find and move the smallest number to the top of the stack using rotate operations.
 ** Game logic
-Here we have some functions to manage the state of the 2 stacks and record the list of operations. There are also some functions to help generate histogram plots that are used in this article.
+Here we have some functions to manage the state of the 2 stacks and record the list of operations. There are also some functions to help generate histogram plots used in this article.
 #+BEGIN_SRC python :session push-swap :results none
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -131,10 +131,10 @@ def push_swap(simulations):
 ** BtoA
 This stage involves finding the element in stack B that represents the cheapest set of rotate operations, such that we can perform a *pa* operation.
 *** Find target index in stack A
-We need to find at what index the element in stack B should be inserted into stack A to keep stack A in order. This index value represens the number of stack A rotations that need to be performed to put that index at the top of the stack so we can push the element into position.
+For each candidate in stack B we compute it's target index. The target index value is the index in stack A where the candidate needs to go to keep stack A in order.
 #+BEGIN_SRC python :session push-swap :results none
 # function to find the index at which `e`
-# should be inserted in order to keep
+# will need to insert into in order to keep
 # A in order.
 def target_index(A, e):
     # move the smallest number to the top of the stack
@@ -151,9 +151,9 @@ def target_index(A, e):
     return target
 #+END_SRC
 
-*** Find cheapest
-Here we use our target_index function to find the element in stack B that has the cheapest cost. for each element we need to calculate the cost of rotating the element to the top of stack B and the cost to rotate stack A into position.
-We also need to keep in mind when we can perform the double rotate operations (*rr* and *rrr*) as they will affect the costs.
+*** Find cheapest candidate
+Here we use our target_index function to find the candidate in stack B that has the cheapest cost. For each candidate we need to calculate the cost of rotating the candidate to the top of stack B and the cost to rotate stack A into position.
+We also need to keep in mind when we can perform the double rotate operations (*rr* and *rrr*) as they will affect the costs. we do this by considering the sign of the cost negative costs being reverse rotates.
 #+BEGIN_SRC python :session push-swap :results none
 def op_cost(a, b):
     if a * b > 0:
@@ -183,16 +183,16 @@ def find_cheapest(A, B):
 #+END_SRC
 
 *** Performing the operations
-Now that we can calculate the cheapest cost to insert an element from B into A. we need to execute a series of rotate operations before finally doing a *pa* operation.
+Now that we can calculate the cheapest cost to insert a candidate from B into A. we need to execute a series of rotate operations before finally doing a *pa* operation.
 #+BEGIN_SRC python :session push-swap :results none
 def btoa(A, B, OPS):
     while (len(B) > 0):
-        # get the cheapest cost to insert an elment into stack A
+        # get the cheapest cost to insert an candidate into stack A
         # positive costs are rotates while negative are reverse rotates
         cost_a, cost_b = find_cheapest(A, B)
         if cost_a * cost_b > 0:
-            # stacks want to be rotated in the same direction
-            # tmp contains the number of rotations to be perfored
+            # stacks want to rotate in the same direction
+            # tmp contains the number of rotations to perform
             tmp = min(cost_a, cost_b) if cost_a > 0 else max(cost_a, cost_b)
             # do the rotations on both stacks
             for _ in range(abs(tmp)):
@@ -248,9 +248,9 @@ def need_sa(A, B):
             (A[1] == max_val and A[2] != min_val))
 #+END_SRC
 *** AtoB Algorithm Options
-At this point the above algorithm for BtoA are set and the last decisions we need to make are how we push elements from AtoB. This is where I found a lot of the variance in the number of operations.
+At this point the above algorithm for BtoA is set. The last decision we need to make is how we push elements from AtoB. This is where I found a lot of the variance in the number of operations.
 **** Keep 3
-Seeing as how we have the need_sa function the first thing we should try is just blindly pushing all but 3 elements into stack B. then if we need to perform a *sa*
+Seeing as how we have the need_sa function the first thing we should try is just blindly pushing all but 3 elements into stack B. Then check if we need to perform a *sa*
 #+BEGIN_SRC python :session push-swap :results file :var algo="keep3"
 def atob(A, B, OPS):
     # push all but 3 values from A to B
@@ -263,13 +263,13 @@ def atob(A, B, OPS):
 plot_algo("keep3")
 #+END_SRC
 
-As we can see from the results this does a pretty good job and goes to show the power of the BtoA algorithm. however there are some outliers above the 5500 limit. Which while will still give us a pass for this project there is one minor change we can make to this algorithm to get us full marks.
+As we can see from the results this does a pretty good job and goes to show the power of the BtoA algorithm. There are some outliers above the 5500 limit however. This will give us a pass for this project but there is one minor change we can make to this algorithm to get us full marks.
 
 #+RESULTS:
 [[file:keep3.png]]
 
 **** Keep 3 Rotate Under
-This algorithm is mostly the same as above, the only difference is that after we push an element onto stack B. We determine if this element is in the larger half (i.e. e > 250 for N = 500) if it is we do a *rb* operation. This will move all the large numbers to the bottom of stack B. A the end of the AtoB operation, stack B will have all the small numbers at the top and then all the large numbers.
+This algorithm is basically the same as above, the only difference is that after we push an element onto stack B. We determine if this element is in the larger half (i.e. e > 250 for N = 500) if it is we do a *rb* operation. This will move all the large numbers to the bottom of stack B. At the end of the AtoB operation, stack B will have all the small numbers in the top half followed by all the large numbers.
 #+BEGIN_SRC python :session push-swap :results file :var algo="keep3_rotate"
 def atob(A, B, OPS):
     n = len(A)
