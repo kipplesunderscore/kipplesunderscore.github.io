@@ -1,6 +1,15 @@
 #+title: Push Swap but actually Push Rotate
 Push Swap is a 42 School Project where you must sort a list of numbers using 2 stacks and a limited set of operations.
 
+[[file:towersofhanoi.jpg]]
+
+It is a take on the classic Tower of Hanoi Puzzle, where instead of 3 stacks to place discs you only have 2. However you are allowed to manipulate the discs that are on the very bottom of the stacks.
+
+I looked at over 50 publicly available implementations for Push Swap (what I could find on google / github etc.). My final algorithm generates the fewest operations required to sort the input.
+If you know of a better approach or any improvements get in touch (intra id: tkipling)
+
+* Problem Definition
+
 You use 2 stacks A and B. The full list of unsorted numbers will input into A, then using the allowed operations you must sort the list into ascending order in stack A. Your algorithm needs to return the list of operations to perform to sort the list.
 
 There are 4 types of operations that we can use:
@@ -40,16 +49,20 @@ Your algorithm should be able to sort any list of non-duplicate, valid 32-bit si
 I have implemented a solution to the problem below in Python we will take a look at some of the choices that can be made for parts of the algorithm and how it affects the operation count.
 ** Algorithm Overview
 The algorithm gets divided into 4 stages:
-1. Normalisation
+1. Normalisation:
+
    Transform the numbers so that they are in the range 1 .. *N* (inclusive) while not strictly necessary, does help with debugging and some calculations like finding the smallest value.
-2. AtoB
+2. AtoB:
+
    Perform *pb* operations until most of the numbers are in stack B.
-   At the end of this stack A should be in order.
-3. BtoA
+   After which stack A should be in order.
+3. BtoA:
+
    perform *pa* operations until all the numbers are back in stack A.
-   Note we can only perform the *pa* operation if stack A will remain in order.
-   This requires us to perform rotate operations on both stacks until we can *pa*
-4. Aligning A
+   Note: we should only perform the *pa* operation if stack A will remain in order afterwards.
+   This requires us to perform rotate operations on both stacks until we can *pa* safely.
+4. Aligning A:
+
    find and move the smallest number to the top of the stack using rotate operations.
 ** Game logic
 Here we have some functions to manage the state of the 2 stacks and record the list of operations. There are also some functions to help generate histogram plots used in this article.
@@ -129,7 +142,7 @@ def push_swap(simulations):
 #+END_SRC
 
 ** BtoA
-This stage involves finding the element in stack B that represents the cheapest set of rotate operations, such that we can perform a *pa* operation.
+This stage involves finding the element in stack B that represents the cheapest set of rotate operations. Once found we can execute the rotates and push the element to stack A.
 *** Find target index in stack A
 For each candidate in stack B we compute it's target index. The target index value is the index in stack A where the candidate needs to go to keep stack A in order.
 #+BEGIN_SRC python :session push-swap :results none
@@ -153,7 +166,7 @@ def target_index(A, e):
 
 *** Find cheapest candidate
 Here we use our target_index function to find the candidate in stack B that has the cheapest cost. For each candidate we need to calculate the cost of rotating the candidate to the top of stack B and the cost to rotate stack A into position.
-We also need to keep in mind when we can perform the double rotate operations (*rr* and *rrr*) as they will affect the costs. we do this by considering the sign of the cost negative costs being reverse rotates.
+We also need to keep in mind the double rotate operations (*rr* and *rrr*) they can be used to reduce the operation cost when rotating both stacks the same direction. we can do this by considering the sign of the cost, negative costs being reverse rotates.
 #+BEGIN_SRC python :session push-swap :results none
 def op_cost(a, b):
     if a * b > 0:
